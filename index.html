@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07070b">
+<title>Topic Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07070b;
+    --text: #f2efe9;
+    --muted: #8b8a93;
+    --faint: #3a3942;
+    --accent: #b8a4ff;
+    --accent-2: #ff9f7a;
+    --glass: rgba(255,255,255,0.04);
+    --line: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Drifting aurora background */
+  .aurora { position: fixed; inset: -20%; z-index: 0; filter: blur(80px); opacity: .55; pointer-events: none; }
+  .blob { position: absolute; border-radius: 50%; mix-blend-mode: screen; transition: background 1.2s ease; }
+  .b1 { width: 55vmax; height: 55vmax; left: 5%; top: 10%; background: #4b2fa8; animation: drift1 22s ease-in-out infinite; }
+  .b2 { width: 45vmax; height: 45vmax; right: 0; top: 35%; background: #8a3a5c; animation: drift2 26s ease-in-out infinite; }
+  .b3 { width: 40vmax; height: 40vmax; left: 30%; bottom: 0; background: #1d4d6b; animation: drift3 30s ease-in-out infinite; }
+  @keyframes drift1 { 50% { transform: translate(18vw, 12vh) scale(1.15); } }
+  @keyframes drift2 { 50% { transform: translate(-20vw, -10vh) scale(.9); } }
+  @keyframes drift3 { 50% { transform: translate(10vw, -18vh) scale(1.2); } }
+  body.thinking .aurora { opacity: .85; }
+  body.thinking .blob { animation-duration: 6s; }
+
+  /* Fine grain overlay */
+  .grain { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: .07;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  main {
+    position: relative; z-index: 2;
+    height: 100dvh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: max(20px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
+    max-width: 760px; margin: 0 auto;
+  }
+
+  header { display: flex; justify-content: space-between; align-items: center; }
+  .brand { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
+  .brand b { color: var(--text); font-weight: 500; }
+  .count { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); letter-spacing: .1em; }
+
+  .stage { display: flex; flex-direction: column; justify-content: center; gap: 22px; min-height: 0; }
+
+  .result { display: flex; flex-direction: column; gap: 18px; }
+  .area:empty { display: none; }
+  .area {
+    align-self: flex-start; width: fit-content;
+    font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); padding: 7px 12px; border: 1px solid rgba(184,164,255,.3); border-radius: 999px;
+    background: rgba(184,164,255,.06);
+    opacity: 0; transform: translateY(6px); transition: opacity .5s, transform .5s;
+  }
+  .area.show { opacity: 1; transform: none; }
+
+  .title {
+    font-family: "Instrument Serif", Georgia, serif; font-weight: 400;
+    font-size: clamp(38px, 9vw, 68px); line-height: 1.02; letter-spacing: -.01em;
+    text-wrap: balance; overflow-wrap: break-word;
+  }
+  .title .ch { display: inline-block; white-space: pre; }
+  .title .scr { color: var(--accent); opacity: .75; font-family: "JetBrains Mono", monospace; font-size: .62em; }
+
+  .hook {
+    font-size: 17px; line-height: 1.55; color: #c9c6cf; max-width: 36ch;
+    opacity: 0; transform: translateY(8px); transition: opacity .7s .1s, transform .7s .1s;
+  }
+  .hook.show { opacity: 1; transform: none; }
+
+  .idle .title { color: var(--text); }
+  .idle .title em { font-style: italic; color: var(--accent); }
+  .idle-sub { color: var(--muted); font-size: 15px; }
+
+  /* Scanner shown while waiting on Claude */
+  .scanner { display: none; flex-direction: column; gap: 6px; font-family: "JetBrains Mono", monospace; }
+  body.thinking .scanner { display: flex; }
+  body.thinking .result { display: none; }
+  .scan-label { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  .scan-list { height: 168px; overflow: hidden; position: relative;
+    mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 70%, transparent); }
+  .scan-track { display: flex; flex-direction: column; }
+  .scan-track div { height: 28px; line-height: 28px; font-size: 15px; color: var(--faint); white-space: nowrap; }
+  .scan-track div.hot { color: var(--text); }
+  .scan-track div.hot::before { content: "→ "; color: var(--accent); }
+
+  .error { color: var(--accent-2); font-size: 14px; min-height: 20px; }
+
+  /* Controls */
+  .controls { display: flex; align-items: center; justify-content: center; gap: 14px; }
+  .go {
+    position: relative; width: 112px; height: 112px; border-radius: 50%; border: 0; cursor: pointer;
+    font-family: Inter, sans-serif; font-weight: 600; font-size: 17px; letter-spacing: .04em; color: #0b0a10;
+    background: radial-gradient(circle at 30% 25%, #fff 0%, #e4dcff 35%, var(--accent) 100%);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset, 0 10px 40px rgba(184,164,255,.35);
+    transition: transform .15s ease, box-shadow .3s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .go::before, .go::after {
+    content: ""; position: absolute; inset: -1px; border-radius: 50%; border: 1px solid rgba(184,164,255,.5);
+    animation: ring 3s ease-out infinite; pointer-events: none;
+  }
+  .go::after { animation-delay: 1.5s; }
+  @keyframes ring { from { transform: scale(1); opacity: .8; } to { transform: scale(1.7); opacity: 0; } }
+  .go:active { transform: scale(.94); }
+  .go:disabled { cursor: default; }
+  body.thinking .go { animation: pulse 1s ease-in-out infinite; }
+  body.thinking .go::before, body.thinking .go::after { animation-duration: 1s; }
+  @keyframes pulse { 50% { transform: scale(.92); box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset, 0 10px 70px rgba(184,164,255,.7); } }
+
+
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .go::before, .go::after, body.thinking .go { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="aurora"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+<div class="grain"></div>
+
+<main>
+  <header>
+    <div class="brand"><b>One</b> Topic</div>
+    <div class="count" id="count"></div>
+  </header>
+
+  <section class="stage">
+    <div class="scanner" aria-hidden="true">
+      <div class="scan-label">Searching the world</div>
+      <div class="scan-list"><div class="scan-track" id="track"></div></div>
+    </div>
+
+    <div class="result idle" id="result" aria-live="polite">
+      <div class="area" id="area"></div>
+      <h1 class="title" id="title">What will you <em>learn</em> today?</h1>
+      <p class="hook show idle-sub" id="hook">Tap Go. Get one topic. Go deep.</p>
+    </div>
+    <div class="error" id="error"></div>
+  </section>
+
+  <div class="controls">
+    <button class="go" id="go">Go</button>
+  </div>
+</main>
+
+
+<script>
+const AREAS = ["Psychology","Character","Communication","Health & mind","Personal finance","Business","Careers","Politics & power","Countries & cultures","Geopolitics","What's happening now","Science & universe","Tech & internet","Everyday systems","Life skills","Survival","Law & your rights","History","Philosophy & religion","Art & film","Mysteries","The future"];
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+let busy = false;
+let scanTimer = null;
+
+function updateCount() {
+  const n = store.get("total", 0);
+  $("count").textContent = n ? `#${String(n).padStart(3, "0")}` : "";
+}
+
+// Fast-scrolling list of areas while waiting
+function startScan() {
+  const track = $("track");
+  const items = [];
+  for (let i = 0; i < 60; i++) items.push(AREAS[Math.floor(Math.random() * AREAS.length)]);
+  track.innerHTML = items.map((t) => `<div>${t}</div>`).join("");
+  let i = 0, delay = 70;
+  const tick = () => {
+    const rows = track.children;
+    [...rows].forEach((r) => r.classList.remove("hot"));
+    rows[(i + 3) % rows.length].classList.add("hot");
+    track.style.transform = `translateY(${-i * 28}px)`;
+    i = (i + 1) % (rows.length - 6);
+    scanTimer = setTimeout(tick, delay);
+  };
+  tick();
+}
+function stopScan() { clearTimeout(scanTimer); }
+
+// Characters scramble then settle, left to right
+function decode(el, text) {
+  const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#%&*+=?/<>";
+  const chars = [...text];
+  el.innerHTML = chars.map(() => `<span class="ch"></span>`).join("");
+  const spans = el.querySelectorAll(".ch");
+  const reveal = chars.map((_, i) => 6 + i * 1.6 + Math.random() * 6);
+  let frame = 0;
+  return new Promise((resolve) => {
+    const step = () => {
+      let done = true;
+      spans.forEach((s, i) => {
+        if (frame >= reveal[i]) {
+          if (s.dataset.done !== "1") { s.textContent = chars[i]; s.className = "ch"; s.dataset.done = "1"; }
+        } else {
+          done = false;
+          s.textContent = chars[i] === " " ? " " : glyphs[Math.floor(Math.random() * glyphs.length)];
+          s.className = "ch scr";
+        }
+      });
+      frame++;
+      if (done) {
+        el.textContent = text; // restore normal wrapping
+        resolve();
+      } else requestAnimationFrame(step);
+    };
+    step();
+  });
+}
+
+async function next() {
+  if (busy) return;
+  busy = true;
+  $("error").textContent = "";
+  $("go").disabled = true;
+  document.body.classList.add("thinking");
+  startScan();
+  const started = Date.now();
+
+  try {
+    const res = await fetch("/api/topic", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recent: store.get("recent", []) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Something went wrong");
+
+    // Let the scan run at least a moment so it feels like a search
+    const wait = 900 - (Date.now() - started);
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+
+    const recent = store.get("recent", []);
+    recent.push(data.title);
+    store.set("recent", recent.slice(-20));
+    store.set("total", store.get("total", 0) + 1);
+    updateCount();
+
+    stopScan();
+    document.body.classList.remove("thinking");
+    const result = $("result");
+    result.classList.remove("idle");
+    $("area").classList.remove("show");
+    $("hook").classList.remove("show", "idle-sub");
+    $("hook").textContent = data.hook;
+    $("area").textContent = data.area;
+    requestAnimationFrame(() => $("area").classList.add("show"));
+    await decode($("title"), data.title);
+    $("hook").classList.add("show");
+    $("go").textContent = "Skip";
+  } catch (e) {
+    stopScan();
+    document.body.classList.remove("thinking");
+    $("error").textContent = e.message;
+  } finally {
+    busy = false;
+    $("go").disabled = false;
+  }
+}
+
+$("go").addEventListener("click", next);
+
+updateCount();
+</script>
+</body>
+</html>
